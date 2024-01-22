@@ -1,25 +1,53 @@
-import sys
 import os
+import sys
+
+import openai
+import pandas as pd
+from dotenv import dotenv_values
+from langchain import LLMChain, OpenAI, PromptTemplate
+from transformers import pipeline
 
 from src.exception import CustomException
 from src.logger import logging
 from src.utils import load_object
 
-import pandas as pd
-
-from dotenv import find_dotenv, load_dotenv
+config = dotenv_values(".env")
 
 
-
-
-class SummarizerLLM():
+class SummarizerLLM:
     def __init__(self) -> None:
         pass
 
     def openai_gpt():
-        
-    def hf_longt5():
-        
+        openai.api_key = config["OPENAI_API_KEY"]
+
+        template = """
+            You are an expert journalist and a reader that can highlight the most important points written in a news article; 
+            You need to summarize a news article in just 1 sentence similar to a headline but more descriptive. 
+            Add a second sentence only if necessary. Limit the total words between 20 to 30 words and do not use too many commas. Make it sound logical;
+
+            TITLE: {title}
+            CONTENT: {content}
+        """
+
+        prompt = PromptTemplate(template=template, input_variables=["title", "content"])
+
+        summarizer_llm = LLMChain(
+            llm=OpenAI(model="gpt-3.5-turbo", temperature=0.1),
+            prompt=prompt,
+            verbose=True,
+        )
+
+        return summarizer_llm
+
+    def hf_longt5(self):
+        summarizer_llm = pipeline(
+            "summarization",
+            "pszemraj/long-t5-tglobal-base-16384-book-summary",
+            max_length=256,
+        )
+
+        return summarizer_llm
 
 
 class PredictPipeline:

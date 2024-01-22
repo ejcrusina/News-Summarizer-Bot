@@ -1,5 +1,6 @@
 import sys
 import os
+from dotenv import dotenv_values
 
 from src.exception import CustomException
 from src.logger import logging
@@ -9,17 +10,68 @@ import pandas as pd
 
 from dotenv import find_dotenv, load_dotenv
 
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+config = dotenv_values(".env")
 
 
+class EmailNews:
+    def __init__(self, sender) -> None:
+        self.sender = sender
 
-class SummarizerLLM():
-    def __init__(self) -> None:
-        pass
+    def send_gmail_html(self, receiver, news_data, asof_date):
+        news_outlet = "INQUIRER"
 
-    def openai_gpt():
-        
-    def hf_longt5():
-        
+        message = MIMEMultipart("alternative")
+        message["Subject"] = f"Philippine News For {asof_date}"
+        message["From"] = self.sender
+        message["To"] = receiver
+
+        # Create HTML version of your message
+        html = """\
+        <html>
+        <head>
+        </head>
+        <body style=font-size:16px>
+            <p>Good day there! Here are the latest news in the Philippines yesterday:</p>
+            <ol>
+        """
+
+        # Add each news article to the HTML content
+        for i, article in enumerate(news_data, start=1):
+            title = article["Title"]
+            link = article["Link"]
+            summarized_news = article["Summary"]
+
+            # Add the article to the HTML content in a numbered list format
+            html += f"""
+            <li>
+                <b>{title}</b> | <a href="{link}">{news_outlet}</a> 
+                <br>
+                <ul>{summarized_news}</ul>
+                <br>
+            </li>
+            """
+
+        # Close the HTML tags
+        html += """\
+            </ol>
+        </body>
+        </html>
+        """
+
+        # Turn into html MIMEText objects
+        html_part = MIMEText(html, "html")
+        message.attach(html_part)
+
+        # Create a secure connection with the server and send the email
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(self.sender, config["GOOGLE_API_KEY"])
+            server.sendmail(self.sender, receiver, message.as_string())
 
 
 class PredictPipeline:
