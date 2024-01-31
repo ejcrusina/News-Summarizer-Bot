@@ -1,6 +1,7 @@
 # local package
 requests==2.31.0
 beautifulsoup4==4.12.2
+lxml
 selenium==4.11.2
 regex==2021.11.10
 pandas
