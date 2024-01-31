@@ -1,27 +1,44 @@
-## Run
-
-
-import os
-import random
-import sys
-import time
 import warnings
 from datetime import date, datetime, timedelta
 
-import pandas as pd
 from boto3 import resource
 from boto3.dynamodb.conditions import Key
 
-from src.components.data_ingestion import DataIngestion
-from src.components.data_transformation import DataTransformation
-from src.components.model_trainer import ModelTrainer
-from src.exception import CustomException
-from src.logger import logging
+from src.logger import CustomLogger
+
+
+logger = CustomLogger(__name__)
 
 
 class CalculateNewsStorage:
-    def __init__(self, nosql_table) -> None:
-        self.nosql_table = nosql_table
+    def __init__(self, table_name, latest_date) -> None:
+        self.nosql_table = resource("dynamodb").Table(table_name)
+        self.latest_date = latest_date
+
+    def create_news_ids(self, news_data: dict) -> dict:
+        """Adds IDs for each news data in DynamoDB table
+
+        Parameters
+        ----------
+        news_data : dict
+            News data with complete keys to be stored
+
+        Returns
+        -------
+        dict
+            News data with additional IDs and CreationDate per news
+        """
+        # Add IDs for DynamoDB table
+        LATEST_DATE_ID = self.latest_date.strftime("%Y%m%d")
+
+        for idx, _ in enumerate(news_data):
+            news_data[idx]["dateID"] = LATEST_DATE_ID
+            news_data[idx]["newsID"] = (
+                LATEST_DATE_ID + "-" + str(len(news_data) - idx)
+            )  # Start ID as 1 for the last news_data in list
+            news_data[idx]["CreationDate"] = datetime.now().isoformat()
+
+        return news_data
 
     def count_news_with_dateID(self, news_dateID: str) -> int:
         """Returns the number of news with Partition Key of dateID
@@ -50,9 +67,10 @@ class CalculateNewsStorage:
 class EditNewsStorage:
     TODAY = date.today()
 
-    def __init__(self, nosql_table, latest_date: date = None) -> None:
-        self.nosql_table = nosql_table
+    def __init__(self, table_name, latest_date: date = None) -> None:
+        self.nosql_table = resource("dynamodb").Table(table_name)
         self.latest_date = latest_date
+        self.calc = CalculateNewsStorage(table_name, latest_date)
 
     def insert_news(self, news_data_list: list = []) -> None:
         """Inserts one news record in DynamoDB table.
@@ -62,13 +80,13 @@ class EditNewsStorage:
         news_data_list : list
             List of dictionaries with all key-value pairs of a news.
         """
-        print("Inserting news...")
+        logger.info("Inserting news in DynamoDB table...")
         for news_data in news_data_list:
             # Insert 1 news
             response = self.nosql_table.put_item(Item=news_data)
             print(response)
 
-        return print("Done insert!")
+        logger.info("Done insert!")
 
     def batch_delete_old_news(self, news_to_delete: list = []) -> None:
         """Delete old newsID records in DynamoDB table by batch to clear storage.
@@ -78,10 +96,10 @@ class EditNewsStorage:
         news_to_delete : list
             List of dictionaries with dateID and newsID of records to be deleted.
         """
-        print("Deleting old news...")
+        logger.info("Deleting old news in DynamoDB table...")
         # Break out if input is empty
         if not news_to_delete:
-            return print("No news to delete.")
+            logger.info("No news to delete.")
 
         response = {}
         # NOTE - batch delete is better if Partition Key + Sort Key pair is not unique
@@ -94,19 +112,20 @@ class EditNewsStorage:
                 response = batch.delete_item(
                     Key={"dateID": part_key, "newsID": sort_key}
                 )
-                print(f"dateID:{part_key} newsID:{sort_key} || {response}")
+                logger.info(f"dateID:{part_key} newsID:{sort_key} || {response}")
 
         # Check if the dateIDs were successfully deleted
-        print("Scanning again the updated table...")
+        logger.info("Scanning again the updated table...")
         response_whole_db = self.nosql_table.scan()
         remaining_dateIDs = set([item["dateID"] for item in response_whole_db["Items"]])
         deleted_dateIDs = set([news["dateID"] for news in news_to_delete])
 
-        assert remaining_dateIDs.isdisjoint(
-            deleted_dateIDs
-        ), "Not all dateIDs were deleted!"
+        try:
+            assert remaining_dateIDs.isdisjoint(deleted_dateIDs)
+        except AssertionError:
+            logger.error("Not all dateIDs were deleted!")
 
-        return print("Done deletion!")
+        logger.info("Done deletion!")
 
     def count_news_with_dateID(self, news_dateID: str) -> int:
         """Returns the number of news with Partition Key of dateID
@@ -131,8 +150,6 @@ class EditNewsStorage:
         total_news = len(news_list)
         return total_news
 
-    calc_nosql = CalculateNewsStorage()
-
     def get_old_news_to_delete(self, days_to_keep: int = 3) -> list:
         """Returns unique dateIDs of old news in DynamoDB table that will be deleted to maintain limited storage.
 
@@ -151,19 +168,19 @@ class EditNewsStorage:
         min_date_id = min_date_stored.strftime("%Y%m%d")
 
         # Scan entire table
-        print("Scanning the entire table...")
+        logger.info("Scanning the entire table...")
         response_whole_db = self.nosql_table.scan()
         # Get all dateIDs so far
         old_dateIDs = set([item["dateID"] for item in response_whole_db["Items"]])
         # Select dateIDs for deletion
         delete_dateIDs = [dateID for dateID in old_dateIDs if dateID < min_date_id]
-        print("Done retrieving dateIDs \n")
+        logger.info("Done retrieving dateIDs \n")
 
         # Get newsID to be deleted per dateID
-        print("Generating newsIDs to delete...")
+        logger.info("Generating newsIDs to delete...")
         news_to_delete = []
         for dateID in delete_dateIDs:
-            total_news = calc_nosql.count_news_with_dateID(news_dateID=dateID)
+            total_news = self.calc.count_news_with_dateID(news_dateID=dateID)
             # Generate newsID based on logic of how it was made before using total record count
             newsID_list = [
                 {"dateID": dateID, "newsID": dateID + "-" + str(idx + 1)}
@@ -172,7 +189,7 @@ class EditNewsStorage:
             news_to_delete += newsID_list
 
         if not news_to_delete:
-            warnings.warn("No old records were found.", Warning)
+            logger.warning("No old records were found.")
         else:
             print("Done!")
 

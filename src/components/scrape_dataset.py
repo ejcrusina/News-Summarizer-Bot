@@ -1,44 +1,14 @@
-# -*- coding: utf-8 -*-
-import logging
 import random
 import time
-import warnings
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import date
 
-import click
 import requests
 from bs4 import BeautifulSoup
-from dotenv import find_dotenv, load_dotenv
 
-from src.exception import CustomException
-from src.logger import logging
-from src.utils import load_object
+from src.logger import CustomLogger
 
 
-@click.command()
-@click.argument("input_filepath", type=click.Path(exists=True))
-@click.argument("output_filepath", type=click.Path())
-def main(input_filepath, output_filepath):
-    """Runs data processing scripts to turn raw data from (../raw) into
-    cleaned data ready to be analyzed (saved in ../processed).
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("making final data set from raw data")
-
-
-if __name__ == "__main__":
-    log_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
-
-    # not used in this stub but often useful for finding various files
-    project_dir = Path(__file__).resolve().parents[2]
-
-    # find .env automagically by walking up directories until it's found, then
-    # load up the .env entries as environment variables
-    load_dotenv(find_dotenv())
-
-    main()
+logger = CustomLogger(__name__)
 
 
 class NewsScraper:
@@ -56,9 +26,12 @@ class NewsScraper:
             Contains dictionaries with metadata of news articles
         """
         # NOTE - change print and asserts to log
+        ASOF_STR = self.asof_date.strftime("%B %d, %Y")
         latest_news_links = []
 
-        for page_no in range(1, self.total_page):
+        logger.info("Started scraping Inquirer website..")
+
+        for page_no in range(1, self.total_page + 1):
             articles = []
             attempts = 0
             while not articles and attempts < 5:
@@ -72,15 +45,17 @@ class NewsScraper:
                     attempts += 1
 
             if attempts == 5:
-                print(f"Failed to fetch articles from page {page_no} after 5 attempts.")
+                logger.warning(
+                    f"Failed to fetch articles from page {page_no} after 5 attempts."
+                )
                 continue
 
             for article in articles:
                 try:
                     news_link = article.a["href"]
                     pub_date = article.find("div", {"id": "ch-postdate"}).span.text
-                    print(news_link, pub_date)
-                    if pub_date == self.asof_date:
+                    print(pub_date, news_link)
+                    if pub_date == ASOF_STR:
                         latest_news_links.append(news_link)
                 except TypeError:  # Skips div tags mainly for styling
                     pass
@@ -88,8 +63,14 @@ class NewsScraper:
             # Add random delay per page access to avoid bot-behavior
             time.sleep(5 + random.randint(0, 5))
 
-        assert latest_news_links, f"No news from {self.asof_date} were fetched."
+        try:
+            assert latest_news_links
+        except AssertionError:
+            logger.error(f"No news from {ASOF_STR} were fetched.")
 
+        logger.info("Inquirer news were successfully scraped!")
+
+        # Get all LATEST news
         news_data = []
 
         for news_link in latest_news_links:
@@ -111,3 +92,14 @@ class NewsScraper:
             news_data.append({"Title": title, "Content": content, "Link": news_link})
 
         return news_data
+
+
+if __name__ == "__main__":
+    ## Manual assign
+    PREV_DATE = date(2024, 1, 24)
+    scraper = NewsScraper(
+        url="https://newsinfo.inquirer.net/category/nation",
+        total_page=4,
+        asof_date=PREV_DATE_STR,
+    )
+    news_data = scraper.scrape_inquirer()
