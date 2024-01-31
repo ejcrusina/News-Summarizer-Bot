@@ -10,15 +10,18 @@ from transformers import pipeline
 from src.exception import CustomException
 from src.logger import logging
 from src.utils import load_object
+from src.logger import CustomLogger
+
 
 config = dotenv_values(".env")
+logger = CustomLogger(__name__)
 
 
 class SummarizerLLM:
     def __init__(self) -> None:
         pass
 
-    def openai_gpt():
+    def openai_gpt(self):
         openai.api_key = config["OPENAI_API_KEY"]
 
         template = """
