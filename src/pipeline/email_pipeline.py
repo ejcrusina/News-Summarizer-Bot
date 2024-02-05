@@ -6,6 +6,7 @@ from dotenv import dotenv_values
 # from src.logger import logging
 # from src.utils import load_object
 
+import os
 import pandas as pd
 
 from dotenv import find_dotenv, load_dotenv
@@ -18,7 +19,8 @@ from email.mime.text import MIMEText
 from src.logger import CustomLogger
 
 
-config = dotenv_values(".env")
+# config = dotenv_values(".env")
+config = os.environ
 logger = CustomLogger(__name__)
 
 
