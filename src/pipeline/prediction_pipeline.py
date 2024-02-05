@@ -13,7 +13,8 @@ from src.utils import load_object
 from src.logger import CustomLogger
 
 
-config = dotenv_values(".env")
+# config = dotenv_values(".env")
+config = os.environ
 logger = CustomLogger(__name__)
 
 

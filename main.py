@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 
 from dotenv import dotenv_values
@@ -11,7 +12,8 @@ from src.pipeline.prediction_pipeline import SummarizerLLM
 logger = CustomLogger(__name__)
 
 # Assign global vars
-config = dotenv_values(".env")
+# config = dotenv_values(".env")
+config = os.environ
 
 # NOTE - uncomment in prod
 TODAY = date.today()
@@ -26,6 +28,8 @@ scraper = NewsScraper(
     asof_date=PREV_DATE,
 )
 news_data = scraper.scrape_inquirer()
+
+assert news_data, "No news data was found!"
 
 logger.info("Summarizing all latest news data...")
 # Initialize LLM that summarizes news
